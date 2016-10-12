@@ -148,7 +148,7 @@ class AppInfoBaseData(
       def statusesToEnrichedTasks(instances: Seq[Instance], statuses: Map[Instance.Id, collection.Seq[Health]]): Seq[EnrichedTask] = {
         instances.flatMap { instance =>
           instance.tasksMap.values.headOption.map { task =>
-            EnrichedTask(app.id, task, statuses.getOrElse(instance.instanceId, Seq.empty[Health]))
+            EnrichedTask(app.id, task, instance.agentInfo, statuses.getOrElse(instance.instanceId, Seq.empty[Health]))
           }
         }
       }

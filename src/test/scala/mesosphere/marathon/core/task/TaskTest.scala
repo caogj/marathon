@@ -2,7 +2,7 @@ package mesosphere.marathon
 package core.task
 
 import mesosphere.marathon.core.base.ConstantClock
-import mesosphere.marathon.core.instance.{ Instance, TestTaskBuilder }
+import mesosphere.marathon.core.instance.TestTaskBuilder
 import mesosphere.marathon.core.task.Task.LocalVolumeId
 import mesosphere.marathon.core.task.state.NetworkInfo
 import mesosphere.marathon.core.task.bus.MesosTaskStatusTestHelper
@@ -10,7 +10,7 @@ import mesosphere.marathon.core.task.update.{ TaskUpdateEffect, TaskUpdateOperat
 import mesosphere.marathon.core.condition.Condition
 import mesosphere.marathon.state.{ AppDefinition, IpAddress, PathId }
 import mesosphere.marathon.stream._
-import mesosphere.marathon.test.{ MarathonTestHelper, Mockito }
+import mesosphere.marathon.test.Mockito
 import org.apache.mesos.{ Protos => MesosProtos }
 import org.scalatest.OptionValues._
 import org.scalatest.{ FunSuite, GivenWhenThen, Matchers }
@@ -45,12 +45,9 @@ class TaskTest extends FunSuite with Mockito with GivenWhenThen with Matchers {
 
     val host: String = "agent1.mesos"
 
-    import MarathonTestHelper.Implicits._
-
     val taskWithoutIp =
       TestTaskBuilder.Helper
         .runningTaskForApp(appWithoutIpAddress.id)
-        .withAgentInfo(_.copy(host = host))
 
     def taskWithOneIp(app: AppDefinition) = {
       val ipAddresses: Seq[MesosProtos.NetworkInfo.IPAddress] = Seq(networkWithOneIp1).flatMap(_.getIpAddressesList)
@@ -106,7 +103,6 @@ class TaskTest extends FunSuite with Mockito with GivenWhenThen with Matchers {
   test("ipAddresses returns None for MarathonTask instances with no IPs") {
     val f = new Fixture
     f.taskWithoutIp.status.networkInfo.ipAddresses should be (None)
-    //    createNetworkInfo(f.taskWithoutIp, f.appWithoutIpAddress, f.host).ipAddresses should be (None)
   }
 
   test("ipAddresses returns an empty list for MarathonTask instances with no IPs and multiple NetworkInfos") {
@@ -158,10 +154,9 @@ class TaskTest extends FunSuite with Mockito with GivenWhenThen with Matchers {
 
     val condition = Condition.Reserved
     val taskId = Task.Id.forRunSpec(f.appWithIpAddress.id)
-    val agentInfo = mock[Instance.AgentInfo]
     val reservation = mock[Task.Reservation]
     val status = Task.Status(f.clock.now, None, None, condition, NetworkInfo.empty)
-    val task = Task.Reserved(taskId, agentInfo, reservation, status, f.clock.now)
+    val task = Task.Reserved(taskId, reservation, status, f.clock.now)
 
     val mesosStatus = MesosTaskStatusTestHelper.running(taskId)
     val op = TaskUpdateOperation.MesosUpdate(Condition.Running, mesosStatus, f.clock.now)
@@ -176,10 +171,9 @@ class TaskTest extends FunSuite with Mockito with GivenWhenThen with Matchers {
 
     val condition = Condition.Reserved
     val taskId = Task.Id.forRunSpec(f.appWithIpAddress.id)
-    val agentInfo = mock[Instance.AgentInfo]
     val reservation = mock[Task.Reservation]
     val status = Task.Status(f.clock.now, None, None, condition, NetworkInfo.empty)
-    val task = Task.Reserved(taskId, agentInfo, reservation, status, f.clock.now)
+    val task = Task.Reserved(taskId, reservation, status, f.clock.now)
 
     val op = TaskUpdateOperation.LaunchOnReservation(f.clock.now, status)
 

@@ -5,7 +5,6 @@ import mesosphere.marathon.Protos.Constraint
 import mesosphere.marathon.Protos.Constraint.Operator
 import mesosphere.marathon.Protos.HealthCheckDefinition.Protocol
 import mesosphere.marathon.Protos.ResidencyDefinition.TaskLostBehavior
-import mesosphere.marathon._
 import mesosphere.marathon.core.appinfo._
 import mesosphere.marathon.core.event._
 import mesosphere.marathon.core.health._
@@ -115,8 +114,12 @@ trait Formats
   implicit lazy val TaskStateFormat: Format[mesos.TaskState] =
     enumFormat(mesos.TaskState.valueOf, str => s"$str is not a valid TaskState type")
 
+  // TODO(cleanup): this Writes is only applicable to AppDefinition instances
   implicit lazy val InstanceWrites: Writes[Instance] = Writes { instance =>
-    Json.arr(instance.tasksMap.values.map(TaskWrites.writes(_).as[JsObject]))
+    TaskWrites.writes(instance.tasksMap.values.head).as[JsObject] ++ Json.obj(
+      "slaveId" -> instance.agentInfo.agentId,
+      "host" -> instance.agentInfo.host
+    )
   }
 
   implicit val TaskStatusNetworkInfoWrites: Format[NetworkInfo] = (
@@ -129,8 +132,6 @@ trait Formats
   implicit val TaskWrites: Writes[Task] = Writes { task =>
     val base = Json.obj(
       "id" -> task.taskId,
-      "slaveId" -> task.agentInfo.agentId,
-      "host" -> task.agentInfo.host,
       "state" -> task.status.condition.toReadableName
     )
 
@@ -160,7 +161,9 @@ trait Formats
     val taskJson = TaskWrites.writes(task.task).as[JsObject]
 
     val enrichedJson = taskJson ++ Json.obj(
-      "appId" -> task.appId
+      "appId" -> task.appId,
+      "slaveId" -> task.agentInfo.agentId,
+      "host" -> task.agentInfo.host
     )
 
     val withServicePorts = if (task.servicePorts.nonEmpty)

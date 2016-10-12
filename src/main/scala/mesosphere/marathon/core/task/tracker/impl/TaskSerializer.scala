@@ -2,13 +2,11 @@ package mesosphere.marathon
 package core.task.tracker.impl
 
 import mesosphere.marathon.core.condition.Condition
-import mesosphere.marathon.core.instance.Instance
 import mesosphere.marathon.core.task.{ Task, TaskCondition }
 import mesosphere.marathon.core.task.Task.{ LocalVolumeId, Reservation }
 import mesosphere.marathon.core.task.state.NetworkInfo
 import mesosphere.marathon.state.Timestamp
 import mesosphere.marathon.stream._
-import org.apache.mesos.{ Protos => MesosProtos }
 import org.slf4j.LoggerFactory
 
 /**
@@ -32,14 +30,6 @@ object TaskSerializer {
       }
     }
 
-    def agentInfo: Instance.AgentInfo = {
-      Instance.AgentInfo(
-        host = required("host", opt(_.hasHost, _.getHost)),
-        agentId = opt(_.hasSlaveId, _.getSlaveId).map(_.getValue),
-        attributes = proto.getAttributesList.toIndexedSeq
-      )
-    }
-
     def reservation: Option[Task.Reservation] =
       opt(_.hasReservation, _.getReservation).map(ReservationSerializer.fromProto)
 
@@ -47,21 +37,25 @@ object TaskSerializer {
 
     lazy val hostPorts = proto.getPortsList.map(_.intValue())(collection.breakOut)
 
-    val taskStatus = Task.Status(
-      stagedAt = Timestamp(proto.getStagedAt),
-      startedAt = opt(_.hasStartedAt, _.getStartedAt).map(Timestamp.apply),
-      mesosStatus = opt(_.hasStatus, _.getStatus),
-      condition = opt(
-        // Invalid could also mean UNKNOWN since it's the default value of an enum
-        t => t.hasCondition && t.getCondition != Protos.MarathonTask.Condition.Invalid,
-        _.getCondition
-      ).flatMap(TaskConditionSerializer.fromProto)
-        // although this is an optional field, migration should have really taken care of this.
-        // because of a bug in migration, some empties slipped through. so we make up for it here.
-        .orElse(opt(_.hasStatus, _.getStatus).map(TaskCondition.apply))
-        .getOrElse(Condition.Unknown),
-      networkInfo = NetworkInfo.empty.copy(hostPorts = hostPorts) // TODO(cleanup): serialization will only be supported after migration to Instance
-    )
+    val taskStatus = {
+      val mesosStatus = opt(_.hasStatus, _.getStatus)
+      val networkInfo = NetworkInfo.empty.copy(hostPorts = hostPorts)
+      Task.Status(
+        stagedAt = Timestamp(proto.getStagedAt),
+        startedAt = opt(_.hasStartedAt, _.getStartedAt).map(Timestamp.apply),
+        mesosStatus = mesosStatus,
+        condition = opt(
+          // Invalid could also mean UNKNOWN since it's the default value of an enum
+          t => t.hasCondition && t.getCondition != Protos.MarathonTask.Condition.Invalid,
+          _.getCondition
+        ).flatMap(TaskConditionSerializer.fromProto)
+          // although this is an optional field, migration should have really taken care of this.
+          // because of a bug in migration, some empties slipped through. so we make up for it here.
+          .orElse(opt(_.hasStatus, _.getStatus).map(TaskCondition.apply))
+          .getOrElse(Condition.Unknown),
+        networkInfo = mesosStatus.fold(networkInfo)(networkInfo.update) // TODO(cleanup): not necessarily correct
+      )
+    }
 
     def launchedTask: Option[Task.Launched] = {
       // TODO: this has super low cohesion (DCOS-10332)
@@ -74,7 +68,6 @@ object TaskSerializer {
 
     constructTask(
       taskId = Task.Id(proto.getId),
-      agentInfo = agentInfo,
       reservation,
       launchedTask,
       taskStatus,
@@ -84,7 +77,6 @@ object TaskSerializer {
 
   private[this] def constructTask(
     taskId: Task.Id,
-    agentInfo: Instance.AgentInfo,
     reservationOpt: Option[Reservation],
     launchedOpt: Option[Task.Launched],
     taskStatus: Task.Status,
@@ -101,17 +93,17 @@ object TaskSerializer {
 
       case (Some(reservation), Some(launched)) =>
         Task.LaunchedOnReservation(
-          taskId, agentInfo, runSpecVersion, taskStatus, reservation)
+          taskId, runSpecVersion, taskStatus, reservation)
 
       case (Some(reservation), None) =>
-        Task.Reserved(taskId, agentInfo, reservation, taskStatus, runSpecVersion)
+        Task.Reserved(taskId, reservation, taskStatus, runSpecVersion)
 
       case (None, Some(launched)) =>
         Task.LaunchedEphemeral(
-          taskId, agentInfo, runSpecVersion, taskStatus)
+          taskId, runSpecVersion, taskStatus)
 
       case (None, None) =>
-        val msg = s"Unable to deserialize task $taskId, agentInfo=$agentInfo. It is neither reserved nor launched"
+        val msg = s"Unable to deserialize task $taskId ($reservationOpt, $launchedOpt, $taskStatus, $maybeVersion). It is neither reserved nor launched"
         throw SerializationFailedException(msg)
     }
   }
@@ -120,13 +112,6 @@ object TaskSerializer {
     val builder = Protos.MarathonTask.newBuilder()
 
     def setId(taskId: Task.Id): Unit = builder.setId(taskId.idString)
-    def setAgentInfo(agentInfo: Instance.AgentInfo): Unit = {
-      builder.setHost(agentInfo.host)
-      agentInfo.agentId.foreach { agentId =>
-        builder.setSlaveId(MesosProtos.SlaveID.newBuilder().setValue(agentId))
-      }
-      builder.addAllAttributes(agentInfo.attributes)
-    }
     def setReservation(reservation: Task.Reservation): Unit = {
       builder.setReservation(ReservationSerializer.toProto(reservation))
     }
@@ -144,7 +129,6 @@ object TaskSerializer {
     }
 
     setId(task.taskId)
-    setAgentInfo(task.agentInfo)
     setTaskCondition(task.status.condition)
     setVersion(task.runSpecVersion)
 
@@ -200,7 +184,8 @@ object TaskConditionSerializer {
   }
 }
 
-private[impl] object ReservationSerializer {
+// TODO move to Migration
+private[marathon] object ReservationSerializer {
 
   object TimeoutSerializer {
     import Protos.MarathonTask.Reservation.State.{ Timeout => ProtoTimeout }

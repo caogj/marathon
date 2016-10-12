@@ -206,10 +206,12 @@ class MarathonFacade(val url: String, baseGroup: PathId, waitTime: Duration = 30
 
   //apps tasks resource --------------------------------------
 
+  private val log = LoggerFactory.getLogger(getClass)
   def tasks(appId: PathId): RestResult[List[ITEnrichedTask]] = {
     requireInBaseGroup(appId)
     val pipeline = marathonSendReceive ~> read[ITListTasks]
     val res = result(pipeline(Get(s"$url/v2/apps$appId/tasks")), waitTime)
+    log.info(s">>> res: $res")
     res.map(_.tasks.toList)
   }
 
