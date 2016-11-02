@@ -6,7 +6,8 @@ import mesosphere.marathon.core.health.{ MesosHttpHealthCheck, PortReference }
 import mesosphere.marathon.core.pod.{ HostNetwork, HostVolume, MesosContainer, PodDefinition }
 import mesosphere.marathon.integration.facades.MarathonFacade._
 import mesosphere.marathon.integration.setup.{ EmbeddedMarathonTest, MesosConfig }
-import mesosphere.marathon.state.{ AppDefinition, Container }
+import mesosphere.marathon.raml.{ App, Container, DockerContainer, EngineType }
+import mesosphere.marathon.state.PathId._
 
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._
@@ -32,11 +33,12 @@ class MesosAppIntegrationTest
 
   test("deploy a simple Docker app using the Mesos containerizer") {
     Given("a new Docker app")
-    val app = AppDefinition(
-      id = testBasePath / "mesosdockerapp",
+    val app = App(
+      id = (testBasePath / "mesosdockerapp").toString,
       cmd = Some("sleep 600"),
-      container = Some(Container.MesosDocker(image = "busybox")),
-      resources = raml.Resources(cpus = 0.2, mem = 16.0),
+      container = Some(Container(`type` = EngineType.Mesos, docker = Some(DockerContainer(image = "busybox")))),
+      cpus = 0.2,
+      mem = 16.0,
       instances = 1
     )
 
@@ -47,7 +49,7 @@ class MesosAppIntegrationTest
     result.code should be(201) // Created
     extractDeploymentIds(result) should have size 1
     waitForEvent("deployment_success")
-    waitForTasks(app.id, 1) // The app has really started
+    waitForTasks(app.id.toPath, 1) // The app has really started
   }
 
   test("deploy a simple pod", Unstable) {
@@ -139,7 +141,7 @@ class MesosAppIntegrationTest
       instances = 1
     )
 
-    val check = appProxyCheck(pod.id, "v1", true)
+    val check = appProxyCheck(pod.id, "v1", state = true)
 
     When("The pod is deployed")
     val createResult = marathon.createPodV2(pod)

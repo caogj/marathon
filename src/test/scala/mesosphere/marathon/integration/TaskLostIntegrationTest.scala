@@ -2,11 +2,11 @@ package mesosphere.marathon
 package integration
 
 import mesosphere.{ AkkaIntegrationFunTest, IntegrationTag, Unstable }
-import mesosphere.marathon.Protos.Constraint.Operator
-import mesosphere.marathon.UnstableTest
-import mesosphere.marathon.api.v2.json.AppUpdate
 import mesosphere.marathon.integration.facades.ITEnrichedTask
 import mesosphere.marathon.integration.setup._
+import mesosphere.marathon.raml.AppUpdate
+import mesosphere.marathon.state.PathId
+import mesosphere.marathon.state.PathId._
 
 @IntegrationTest
 @UnstableTest
@@ -46,14 +46,14 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
     val app = appProxy(testBasePath / "app", "v1", instances = 1, withHealth = false)
     marathon.createAppV2(app)
     waitForEvent("deployment_success")
-    val task = waitForTasks(app.id, 1).head
+    val task = waitForTasks(app.id.toPath, 1).head
 
     When("We stop the slave, the task is declared lost")
     mesosCluster.agents.head.stop()
     waitForEventMatching("Task is declared lost") { matchEvent("TASK_UNREACHABLE", task) }
 
     And("The task is not removed from the task list")
-    val lost = waitForTasks(app.id, 1).head
+    val lost = waitForTasks(app.id.toPath, 1).head
     lost.state should be("TASK_UNREACHABLE")
 
     When("We do a Mesos Master failover and start the slave again")
@@ -70,7 +70,7 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
     val app = appProxy(testBasePath / "app", "v1", instances = 1, withHealth = false)
     marathon.createAppV2(app)
     waitForEvent("deployment_success")
-    val task = waitForTasks(app.id, 1).head
+    val task = waitForTasks(app.id.toPath, 1).head
 
     When("We stop the slave, the task is declared lost")
     mesosCluster.agents.head.stop()
@@ -97,27 +97,22 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
       isKilled |= matchEvent("TASK_KILLED", replacement)(event)
       isRunning && isKilled
     }
-    waitForTasks(app.id, 1).head should be(task)
+    waitForTasks(app.id.toPath, 1).head should be(task)
   }
 
   // regression test for https://github.com/mesosphere/marathon/issues/4059
   test("Scaling down an app with constraints and lost tasks will succeed") {
-    import mesosphere.marathon.Protos.Constraint
     Given("an app that is constrained to a unique hostname")
-    val constraint: Constraint = Constraint.newBuilder
-      .setField("hostname")
-      .setOperator(Operator.UNIQUE)
-      .setValue("")
-      .build
+    val constraint = Seq("hostname", "UNIQUE")
 
     // start both slaves
     mesosCluster.agents.foreach(_.start())
 
-    val app = appProxy(testBasePath / "app", "v1", instances = 2, withHealth = false).copy(constraints = Set(constraint))
+    val app = appProxy(testBasePath / "app", "v1", instances = 2, withHealth = false).copy(constraints = Seq(constraint))
 
     marathon.createAppV2(app)
     waitForEvent("deployment_success")
-    val enrichedTasks = waitForTasks(app.id, 2)
+    val enrichedTasks = waitForTasks(app.id.toPath, 2)
     val task = enrichedTasks.find(t => t.host == "0").getOrElse(throw new RuntimeException("No matching task found on slave1"))
 
     When("agent1 is stopped")
@@ -126,11 +121,11 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
     waitForEventMatching("Task is declared lost") { matchEvent("TASK_UNREACHABLE", task) }
 
     When("We try to scale down to one instance")
-    marathon.updateApp(app.id, AppUpdate(instances = Some(1)))
-    waitForEventMatching("deployment to scale down should be triggered") { matchDeploymentStart(app.id.toString) }
+    marathon.updateApp(PathId(app.id), AppUpdate(instances = Some(1)))
+    waitForEventMatching("deployment to scale down should be triggered") { matchDeploymentStart(app.id) }
 
     Then("the deployment will eventually finish")
-    waitForEventMatching("app should be scaled and deployment should be finished") { matchDeploymentSuccess(1, app.id.toString) }
+    waitForEventMatching("app should be scaled and deployment should be finished") { matchDeploymentSuccess(1, app.id) }
     marathon.listDeploymentsForBaseGroup().value should have size 0
   }
 
@@ -139,7 +134,7 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
 
     marathon.createAppV2(app)
     waitForEvent("deployment_success")
-    val enrichedTasks = waitForTasks(app.id, 1)
+    val enrichedTasks = waitForTasks(app.id.toPath, 1)
     val task = enrichedTasks.headOption.getOrElse(throw new RuntimeException("No matching task found"))
 
     When("agent1 is stopped")
@@ -148,10 +143,10 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
     waitForEventMatching("Task is declared lost") { matchEvent("TASK_UNREACHABLE", task) }
 
     When("We try to scale down to one instance")
-    marathon.updateApp(app.id, AppUpdate(instances = Some(0)))
+    marathon.updateApp(PathId(app.id), AppUpdate(instances = Some(0)))
 
     Then("the deployment will eventually finish")
-    waitForEventMatching("app should be scaled and deployment should be finished") { matchDeploymentSuccess(1, app.id.toString) }
+    waitForEventMatching("app should be scaled and deployment should be finished") { matchDeploymentSuccess(1, app.id) }
     marathon.listDeploymentsForBaseGroup().value should have size 0
   }
 
@@ -160,7 +155,7 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
     val app = appProxy(testBasePath / "app", "v1", instances = 1, withHealth = false)
     marathon.createAppV2(app)
     waitForEvent("deployment_success")
-    val task = waitForTasks(app.id, 1).head
+    val task = waitForTasks(app.id.toPath, 1).head
 
     When("We stop the slave, the task is declared lost")
     mesosCluster.agents.head.stop()
@@ -168,7 +163,7 @@ class TaskLostIntegrationTest extends AkkaIntegrationFunTest with EmbeddedMarath
     waitForEventMatching("Task is declared lost") { matchEvent("TASK_LOST", task) }
 
     Then("The task is killed due to GC timeout and a replacement is started")
-    val replacement = waitForTasks(app.id, 1).head
+    val replacement = waitForTasks(app.id.toPath, 1).head
     replacement should not be task
   }
 

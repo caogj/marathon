@@ -5,6 +5,7 @@ import mesosphere.Unstable
 import mesosphere.AkkaIntegrationFunTest
 import mesosphere.marathon.integration.facades.ITEnrichedTask
 import mesosphere.marathon.integration.setup._
+import mesosphere.marathon.state.PathId._
 
 @IntegrationTest
 @UnstableTest
@@ -33,7 +34,7 @@ class TaskUnreachableIntegrationTest extends AkkaIntegrationFunTest with Embedde
     val app = appProxy(testBasePath / "app", "v1", instances = 1, withHealth = false)
     marathon.createAppV2(app)
     waitForEvent("deployment_success")
-    val task = waitForTasks(app.id, 1).head
+    val task = waitForTasks(app.id.toPath, 1).head
 
     When("the slave is partitioned")
     mesosCluster.agents(0).stop()

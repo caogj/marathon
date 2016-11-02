@@ -242,10 +242,10 @@ object RamlTypeGenerator {
       if (required && !forceOptional) {
         REF("json") DOT "\\" APPLY LIT(name) DOT "validate" APPLYTYPE `type`
       } else if (repeated && !forceOptional) {
-        REF("json") DOT "\\" APPLY LIT(name) DOT "validate" APPLYTYPE `type` DOT "orElse" APPLY (REF(PlayJsSuccess) APPLY(`type` APPLY()))
+        REF("json") DOT "\\" APPLY LIT(name) DOT "validateOpt" APPLYTYPE `type` DOT "map" APPLY (REF("_") DOT "getOrElse" APPLY(`type` APPLY()))
       } else {
         if (defaultValue.isDefined && !forceOptional) {
-          (REF("json") DOT "\\" APPLY LIT(name)) DOT "validate" APPLYTYPE `type` DOT "orElse" APPLY (REF(PlayJsSuccess) APPLY defaultValue.get)
+          (REF("json") DOT "\\" APPLY LIT(name)) DOT "validateOpt" APPLYTYPE `type` DOT "map" APPLY (REF("_") DOT "getOrElse" APPLY defaultValue.get)
         } else {
           (REF("json") DOT "\\" APPLY LIT(name)) DOT "validateOpt" APPLYTYPE `type`
         }

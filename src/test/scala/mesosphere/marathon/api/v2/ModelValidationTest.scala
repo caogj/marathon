@@ -4,12 +4,12 @@ package api.v2
 import com.wix.accord._
 import com.wix.accord.dsl._
 import mesosphere.marathon.api.v2.Validation._
-import mesosphere.marathon.api.v2.json.GroupUpdate
+import mesosphere.marathon.api.v2.json.GroupUpdateHelper
+import mesosphere.marathon.raml.GroupUpdate
 import mesosphere.marathon.state.Container._
 import mesosphere.marathon.state.PathId._
 import mesosphere.marathon.state._
 import mesosphere.marathon.test.MarathonSpec
-import org.apache.mesos.Protos.ContainerInfo.DockerInfo.Network
 import org.scalatest.{ BeforeAndAfterAll, Matchers, OptionValues }
 import play.api.libs.json.{ JsObject, Json }
 
@@ -21,10 +21,12 @@ class ModelValidationTest
     with BeforeAndAfterAll
     with OptionValues {
 
-  implicit val groupUpdateValidator = GroupUpdate.groupUpdateValid(Set.empty[String])
+  import ModelValidationTest._
+
+  implicit val groupUpdateValidator = GroupUpdateHelper.groupUpdateValid(Set.empty[String])
 
   test("A group update should pass validation") {
-    val update = GroupUpdate(id = Some("/a/b/c".toPath))
+    val update = GroupUpdate(id = Some("/a/b/c"))
 
     validate(update).isSuccess should be(true)
   }
@@ -42,7 +44,7 @@ class ModelValidationTest
     val failedResult = Group.validRootGroup(maxApps = Some(2), Set()).apply(group)
     failedResult.isFailure should be(true)
     ValidationHelper.getAllRuleConstrains(failedResult)
-      .find(v => v.message.contains("This Marathon instance may only handle up to 2 Apps!")) should be ('defined)
+      .find(v => v.message.contains("This Marathon instance may only handle up to 2 Apps!")) should be('defined)
 
     val successfulResult = Group.validRootGroup(maxApps = Some(10), Set()).apply(group)
     successfulResult.isSuccess should be(true)
@@ -103,17 +105,23 @@ class ModelValidationTest
   private def createServicePortApp(id: PathId, servicePort: Int) =
     AppDefinition(
       id,
+      networks = Seq(core.pod.BridgeNetwork()),
       container = Some(Docker(
         image = "demothing",
-        network = Some(Network.BRIDGE),
         portMappings = Seq(PortMapping(2000, Some(0), servicePort = servicePort))
       ))
     )
+}
+
+object ModelValidationTest {
 
   case class ImportantTitle(name: String)
 
-  implicit val mrImportantValidator = validator[ImportantTitle] { m =>
-    m.name is equalTo("Dr.")
-    m.name is notEmpty
+  object ImportantTitle {
+
+    implicit val mrImportantValidator: Validator[ImportantTitle] = validator[ImportantTitle] { m =>
+      m.name is equalTo("Dr.")
+      m.name is notEmpty
+    }
   }
 }
