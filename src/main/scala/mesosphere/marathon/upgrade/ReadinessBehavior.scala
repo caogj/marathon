@@ -135,17 +135,17 @@ trait ReadinessBehavior { this: Actor =>
     }
 
     def initiateReadinessCheck(instance: Instance): Unit = {
-      def initiateReadinessCheckForTask(task: Task, launched: Task.Launched): Unit = {
+      def initiateReadinessCheckForTask(task: Task): Unit = {
         log.debug(s"Schedule readiness check for task: ${task.taskId}")
-        ReadinessCheckExecutor.ReadinessCheckSpec.readinessCheckSpecsForTask(runSpec, task, launched).foreach { spec =>
+        ReadinessCheckExecutor.ReadinessCheckSpec.readinessCheckSpecsForTask(runSpec, task).foreach { spec =>
           val subscriptionName = ReadinessCheckSubscriptionKey(task.taskId, spec.checkName)
           val subscription = readinessCheckExecutor.execute(spec).subscribe(self ! _)
           subscriptions += subscriptionName -> subscription
         }
       }
       instance.tasksMap.foreach {
-        case (taskId, task) =>
-          task.launched.foreach(initiateReadinessCheckForTask(task, _))
+        case (_, task) =>
+          if (task.isRunning) initiateReadinessCheckForTask(task)
       }
     }
 

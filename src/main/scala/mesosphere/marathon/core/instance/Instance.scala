@@ -32,7 +32,7 @@ case class Instance(
     runSpecVersion: Timestamp) extends MarathonState[Protos.Json, Instance] with Placed {
 
   val runSpecId: PathId = instanceId.runSpecId
-  val isLaunched: Boolean = tasksMap.nonEmpty && tasksMap.valuesIterator.forall(task => task.launched.isDefined)
+  val isLaunched: Boolean = state.condition.isActive // TODO(cleanup): rename/remove
 
   def isReserved: Boolean = state.condition == Condition.Reserved
   def isCreated: Boolean = state.condition == Condition.Created

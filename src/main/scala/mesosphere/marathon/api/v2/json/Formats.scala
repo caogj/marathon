@@ -23,6 +23,7 @@ import org.apache.mesos.Protos.ContainerInfo.DockerInfo
 import org.apache.mesos.{ Protos => mesos }
 import play.api.data.validation.ValidationError
 import play.api.libs.functional.syntax._
+import play.api.libs.json.Json.JsValueWrapper
 import play.api.libs.json._
 
 import scala.collection.immutable.Seq
@@ -129,32 +130,26 @@ trait Formats
     (__ \ "ipAddresses").formatNullable[Seq[mesos.NetworkInfo.IPAddress]]
   )(NetworkInfo(_, _, _, _), unlift(NetworkInfo.unapply))
 
+  import scala.collection.mutable
   implicit val TaskWrites: Writes[Task] = Writes { task =>
-    val base = Json.obj(
+    val fields = mutable.HashMap[String, JsValueWrapper](
       "id" -> task.taskId,
       "state" -> task.status.condition.toReadableName
     )
+    if (task.isActive) {
+      fields.update("startedAt", task.status.startedAt)
+      fields.update("stagedAt", task.status.stagedAt)
+      fields.update("ports", task.status.networkInfo.hostPorts)
+      fields.update("version", task.runSpecVersion)
+    }
+    task.status.networkInfo.ipAddresses.foreach { ipAddresses =>
+      fields.update("ipAddresses", ipAddresses)
+    }
+    task.reservationWithVolumes.foreach { reservation =>
+      fields.update("localVolumes", reservation.volumeIds)
+    }
 
-    val launched = task.launched.map { launched =>
-      task.status.networkInfo.ipAddresses.foldLeft(
-        base ++ Json.obj (
-          "startedAt" -> task.status.startedAt,
-          "stagedAt" -> task.status.stagedAt,
-          "ports" -> task.status.networkInfo.hostPorts,
-          "version" -> task.runSpecVersion
-        )
-      ){
-          case (launchedJs, ipAddresses) => launchedJs ++ Json.obj("ipAddresses" -> ipAddresses)
-        }
-    }.getOrElse(base)
-
-    val reservation = task.reservationWithVolumes.map { reservation =>
-      launched ++ Json.obj(
-        "localVolumes" -> reservation.volumeIds
-      )
-    }.getOrElse(launched)
-
-    reservation
+    Json.obj(fields.to[Seq]: _*)
   }
 
   implicit lazy val EnrichedTaskWrites: Writes[EnrichedTask] = Writes { task =>
