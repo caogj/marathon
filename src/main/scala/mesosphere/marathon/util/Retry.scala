@@ -2,6 +2,7 @@ package mesosphere.marathon.util
 
 import akka.actor.Scheduler
 import com.typesafe.config.Config
+import com.typesafe.scalalogging.StrictLogging
 
 import scala.concurrent.duration.{ FiniteDuration, _ }
 import scala.concurrent.{ ExecutionContext, Future, Promise, blocking => blockingCall }
@@ -28,7 +29,7 @@ object RetryConfig {
   *
   * See also: https://www.awsarchitectureblog.com/2015/03/backoff.html
   */
-object Retry {
+object Retry extends StrictLogging {
   private[util] val random = new Random()
   val DefaultMaxAttempts = 5
   val DefaultMinDelay = 10.millis
@@ -96,6 +97,7 @@ object Retry {
               nextDelay < absoluteMaxDelay,
               s"nextDelay of ${nextDelay.toSeconds} seconds is too big, may not exceed ${absoluteMaxDelay.toSeconds}")
 
+            logger.debug(s"""$name received "${e.getMessage}" will retry in ${nextDelay.toMillis} milliseconds.""")
             scheduler.scheduleOnce(nextDelay)(retry(attempt + 1, nextDelay))
           } else {
             promise.failure(TimeoutException(s"$name failed after $maxAttempts attempt(s). Last error: ${e.getMessage}", e))

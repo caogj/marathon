@@ -129,7 +129,9 @@ case class LocalMarathon(
       marathon = Some(create())
     }
     val port = conf.get("http_port").orElse(conf.get("https_port")).map(_.toInt).getOrElse(httpPort)
-    val future = Retry(s"marathon-$port", Int.MaxValue, 1.milli, 5.seconds) {
+    // Marathon should start in less than 60 seconds so we stop retrying before that timeout to get a proper error
+    // message.
+    val future = Retry(s"marathon-$port", 10, 1.milli, 5.seconds) {
       async {
         val result = await(Http(system).singleRequest(Get(s"http://localhost:$port/v2/leader")))
         if (result.status.isSuccess()) { // linter:ignore //async/await
