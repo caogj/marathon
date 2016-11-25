@@ -29,7 +29,9 @@ object WaitTestSupport {
   }
 
   def waitFor[T](description: String, maxWait: FiniteDuration)(fn: => Option[T])(implicit scheduler: Scheduler, ctx: ExecutionContext): T = {
-    val result = Retry.blocking(description, Int.MaxValue, maxDelay = maxWait) {
+    // We time out after maxWait / 2 because the computation itself takes some time and we want to time out before the
+    // future below does.
+    val result = Retry.blocking(description, Int.MaxValue, maxTotalTime = maxWait / 2) {
       fn.getOrElse(throw new AssertionError(s"Waiting for $description took longer than $maxWait. Give up."))
     }
     Await.result(result, maxWait)
